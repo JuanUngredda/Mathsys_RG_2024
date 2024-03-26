@@ -4,6 +4,8 @@ from botorch.models import SingleTaskGP
 from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
 from botorch.utils.testing import BotorchTestCase, MockModel, MockPosterior
 
+from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement
+
 
 class TestMathsysExpectedImprovement(BotorchTestCase):
     def test_forward_evaluation(self):
@@ -11,13 +13,14 @@ class TestMathsysExpectedImprovement(BotorchTestCase):
             mean = torch.tensor([[-0.5]], device=self.device, dtype=dtype)
             variance = torch.ones(1, 1, device=self.device, dtype=dtype)
             mm = MockModel(MockPosterior(mean=mean, variance=variance))
-            # ei_expected =? what's the expected value here?
-
+            ei_expected = torch.tensor([0.1978], dtype=dtype)
+            #
             X = torch.empty(1, 1, device=self.device, dtype=dtype)  # dummy
-            # module =? initialize your acquisition function
-            # ei_actual = module(X)
+            module = MathsysExpectedImprovement(model=mm, best_f=0.0)
+            ei_actual = module(X)
 
-            # self.assertAllClose(ei_actual, ei_expected, atol=1e-4)
+            self.assertAllClose(ei_actual, ei_expected, atol=1e-4)
+            self.assertEqual(ei_actual.shape, torch.Size([1]))
 
     def test_forward_shape(self):
         for dtype in (torch.float, torch.double):
