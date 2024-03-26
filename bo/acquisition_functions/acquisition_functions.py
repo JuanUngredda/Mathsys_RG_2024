@@ -4,6 +4,7 @@ from typing import Optional, Union, Any
 import torch
 from botorch.acquisition import ExpectedImprovement, \
     qExpectedImprovement, MCAcquisitionObjective
+from botorch.acquisition.analytic import _ei_helper
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.model import Model
 from botorch.sampling import MCSampler, SobolQMCNormalSampler
@@ -48,7 +49,12 @@ class MathsysExpectedImprovement(ExpectedImprovement):
             A `(b1 x ... bk)`-dim tensor of Expected Improvement values at the
             given design points `X`.
         """
-        pass
+        posterior = self.model.posterior(X)
+        mu = posterior.mean
+        sigma = torch.sqrt(posterior.variance)
+        Z = (mu - self.best_f) / sigma
+        ei_value = sigma * _ei_helper(Z)
+        return ei_value.reshape(-1)
 
 
 class MathsysMCExpectedImprovement(qExpectedImprovement):

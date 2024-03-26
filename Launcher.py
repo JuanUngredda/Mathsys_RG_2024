@@ -13,7 +13,7 @@ if __name__ == "__main__":
     black_box_function = Branin(noise_std=1e-6, negate=True)
     model = GPModelWrapper()
     loop = OptimizationLoop(black_box_func=black_box_function,
-                            ei_type=EIType.BOTORCH_MC_EXPECTED_IMPROVEMENT,
+                            ei_type=EIType.MATHSYS_EXPECTED_IMPROVEMENT,
                             bounds=bounds,
                             model=model,
                             seed=0,
