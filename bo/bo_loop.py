@@ -1,11 +1,14 @@
+from typing import Optional
+
 import torch
+from botorch.acquisition import MCAcquisitionObjective
 from botorch.optim import optimize_acqf
 from botorch.test_functions.base import BaseTestProblem
 from botorch.utils.transforms import unnormalize
 from torch import Tensor
 
-from bo.acquisition_functions.acquisition_functions import ExpectedImprovementFactory, EIType
-from bo.model.Model import GPModelWrapper
+from bo.acquisition_functions.acquisition_functions import acquisition_function_factory, AcquisitionFunctionType
+from bo.model.Model import GPModelWrapper, ConstrainedPosteriorMean
 
 # constants
 device = torch.device("cpu")
@@ -14,16 +17,24 @@ dtype = torch.float64
 
 class OptimizationLoop:
 
-    def __init__(self, black_box_func: BaseTestProblem, model: GPModelWrapper, ei_type: EIType, seed: int, budget: int,
+    def __init__(self, black_box_func: BaseTestProblem,
+                 model: GPModelWrapper,
+                 objective: Optional[MCAcquisitionObjective],
+                 ei_type: AcquisitionFunctionType,
+                 seed: int,
+                 budget: int,
+                 performance_type: str,
                  bounds: Tensor):
         torch.random.manual_seed(seed)
+        self.objective = objective
         self.bounds = bounds
         self.black_box_func = black_box_func
         self.dim_x = self.black_box_func.dim
         self.seed = seed
         self.model = model
         self.budget = budget
-        self.ei_type = ei_type
+        self.performance_type = performance_type
+        self.acquisition_function_type = ei_type
 
     def run(self):
         best_observed_all_sampled = []
@@ -31,12 +42,18 @@ class OptimizationLoop:
         train_x, train_y = self.generate_initial_data(n=6)
 
         model = self.update_model(train_x, train_y)
-
-        best_observed_all_sampled.append(self.best_observed(train_y))
         for iteration in range(self.budget):
-            acquisition_function = ExpectedImprovementFactory(model=model,
-                                                              ei_type=self.ei_type,
-                                                              best_value=self.best_observed(train_y))
+            best_observed_location, best_observed_value = self.best_observed(
+                best_value_computation_type=self.performance_type,
+                train_x=train_x,
+                train_y=train_y,
+                model=model,
+                bounds=self.bounds)
+            best_observed_all_sampled.append(best_observed_value)
+            acquisition_function = acquisition_function_factory(model=model,
+                                                                type=self.acquisition_function_type,
+                                                                objective=self.objective,
+                                                                best_value=best_observed_value)
 
             new_x = self.compute_next_sample(acquisition_function=acquisition_function)
             new_y = self.evaluate_black_box_func(unnormalize(new_x, bounds=self.bounds))
@@ -45,15 +62,15 @@ class OptimizationLoop:
             train_y = torch.cat([train_y, new_y])
             model = self.update_model(X=train_x, y=train_y)
 
-            best_observed_all_sampled.append(self.best_observed(train_y))
             print(
                 f"\nBatch {iteration:>2}: best_value (EI) = "
-                f"({self.best_observed(train_y):>4.5f}), ",
+                f"({best_observed_value:>4.5f}), best location " + str(
+                    best_observed_location) + " current sample decision x: " + str(new_x),
                 end="",
             )
 
     def evaluate_black_box_func(self, X):
-        return self.black_box_func(X).reshape(len(X), 1)
+        return self.black_box_func.evaluate_black_box(X)
 
     def generate_initial_data(self, n: int):
         # generate training data
@@ -65,17 +82,32 @@ class OptimizationLoop:
         optimized_model = self.model.optimize()
         return optimized_model
 
-    def best_observed(self, train_y):
-        return torch.max(train_y)
+    def best_observed(self, best_value_computation_type, train_x, train_y, model, bounds):
+        if best_value_computation_type == "sampled":
+            return self.compute_best_sampled_value(train_x, train_y)
+        elif best_value_computation_type == "model":
+            return self.compute_best_posterior_mean(model, bounds)
 
-    def compute_next_sample(self, acquisition_function):
-        bounds = torch.tensor([[0.0] * self.dim_x, [1.0] * self.dim_x])
-        candidates, _ = optimize_acqf(
-            acq_function=acquisition_function,
+    def compute_best_sampled_value(self, train_x, train_y):
+        return train_x[torch.argmax(train_y)], torch.max(train_y)
+
+    def compute_best_posterior_mean(self, model, bounds):
+        argmax_mean, max_mean = optimize_acqf(
+            acq_function=ConstrainedPosteriorMean(model, maximize=True),
             bounds=bounds,
             q=1,
-            num_restarts=10,
-            raw_samples=512,  # used for intialization heuristic
+            num_restarts=20,
+            raw_samples=2048,
+        )
+        return argmax_mean, max_mean
+
+    def compute_next_sample(self, acquisition_function):
+        candidates, _ = optimize_acqf(
+            acq_function=acquisition_function,
+            bounds=self.bounds,
+            q=1,
+            num_restarts=5,
+            raw_samples=20,  # used for intialization heuristic
             options={"maxiter": 200},
         )
         # observe new values
