@@ -64,6 +64,47 @@ def acquisition_function_factory(type, model, objective, best_value):
                                               objective=objective)
 
 
+class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction):
+
+    def __init__(self, model: Model,
+                 sampler: Optional[MCSampler] = None,
+                 num_fantasies: Optional[int] = 5,
+                 current_value: Optional[Tensor] = None,
+                 objective: Optional[MCAcquisitionObjective] = None,
+                 posterior_transform: Optional[PosteriorTransform] = None,
+                 X_pending: Optional[Tensor] = None) -> None:
+        super().__init__(model, sampler, objective, posterior_transform, X_pending)
+        self.current_value = current_value
+        self.num_fantasies = num_fantasies
+
+    def forward(self, X: Tensor) -> Tensor:
+        kgvals = torch.zeros(X.shape[0], dtype=torch.double)
+        for xi, xnew in enumerate(X):
+            fantasy_model = self.model.fantasize(
+                X=xnew,
+                sampler=self.sampler,
+            )
+            bounds = torch.tensor([[0.0] * X.shape[-1], [1.0] * X.shape[-1]])
+            batch_shape = ConstrainedPosteriorMean(fantasy_model).model.batch_shape
+            with torch.enable_grad():
+                num_init_points = 5
+                initial_conditions = draw_sobol_samples(bounds=bounds, n=num_init_points, q=1, batch_shape=batch_shape)
+                best_x, best_fval = gen_candidates_torch(
+                    initial_conditions=initial_conditions.contiguous(),
+                    acquisition_function=ConstrainedPosteriorMean(fantasy_model),
+                    lower_bounds=bounds[0],
+                    upper_bounds=bounds[1],
+                    options={"maxiter": 60}
+                )
+
+                # TODO: Check that I get the candidate with the greatest value
+                # Take the average over the different realisations to save the kgval
+            kgvals[xi] = best_fval
+
+        if self.current_value is not None:
+            kgvals = kgvals - self.current_value
+        return kgvals
+
 class MCConstrainedKnowledgeGradient(MCAcquisitionFunction):
     def __init__(self, model: Model, num_fantasies: Optional[int] = 64, sampler: Optional[MCSampler] = None,
                  objective: Optional[MCAcquisitionObjective] = None,

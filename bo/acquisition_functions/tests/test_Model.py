@@ -2,10 +2,13 @@ from unittest import TestCase
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.models import SingleTaskGP
+from botorch import fit_gpytorch_mll
+from botorch.models import SingleTaskGP, ModelListGP
 from botorch.models.transforms import Standardize
 from botorch.utils.testing import BotorchTestCase
+from gpytorch.mlls import SumMarginalLogLikelihood
 
+from bo.acquisition_functions.acquisition_functions import DecoupledConstrainedKnowledgeGradient
 from bo.constrained_functions.synthetic_problems import ConstrainedBranin
 from bo.model.Model import ConstrainedGPModelWrapper, ConstrainedPosteriorMean
 
@@ -88,11 +91,11 @@ class TestPosteriorConstrainedMean(BotorchTestCase):
 class TestConstrainedGPModelWrapper(TestCase):
     def test_fit(self):
         d = 1
-        n_points_objective = 1000
+        n_points_objective = 10
         n_points_constraints = 6
         torch.manual_seed(0)
-        train_Xf = torch.rand(n_points_objective, d, device=self.device, dtype=dtype)
-        train_Xc = torch.rand(n_points_constraints, d, device=self.device, dtype=dtype)
+        train_Xf = torch.rand(n_points_objective, d, device=device, dtype=dtype)
+        train_Xc = torch.rand(n_points_constraints, d, device=device, dtype=dtype)
         problem = ConstrainedBranin()
         train_f_vals = problem.evaluate_true(train_Xf)
         train_c_vals = problem.evaluate_slack_true(train_Xc)
@@ -102,4 +105,15 @@ class TestConstrainedGPModelWrapper(TestCase):
                                train_Y=train_f_vals.reshape(-1, 1),
                                train_Yvar=train_var_noise.expand_as(train_f_vals.reshape(-1, 1)),
                                outcome_transform=Standardize(m=1))
+        model_c = SingleTaskGP(train_X=train_Xc,
+                               train_Y=train_c_vals.reshape(-1, 1),
+                               train_Yvar=train_var_noise.expand_as(train_c_vals.reshape(-1, 1)))
+
+        model = ModelListGP(model_f, model_c)
+
+        mll = SumMarginalLogLikelihood(model.likelihood, model)
+        fit_gpytorch_mll(mll)
+
+        kg = DecoupledConstrainedKnowledgeGradient(model=model, num_fantasies=5,
+                                                   current_value=torch.Tensor([0.0]))
 
