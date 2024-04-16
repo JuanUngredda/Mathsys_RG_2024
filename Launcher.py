@@ -36,10 +36,10 @@ if __name__ == "__main__":
     )
     loop = OptimizationLoop(black_box_func=black_box_function,
                             objective=constrained_obj,
-                            ei_type=AcquisitionFunctionType.MC_CONSTRAINED_KNOWLEDGE_GRADIENT,
+                            ei_type=AcquisitionFunctionType.DECOUPLED_CONSTRAINED_KNOWLEDGE_GRADIENT,
                             bounds=torch.tensor([[0.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype),
                             performance_type="model",
                             model = model,
                             seed=0,
-                            budget=30)
+                            budget=5)
     loop.run()

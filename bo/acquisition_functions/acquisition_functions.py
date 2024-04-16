@@ -22,6 +22,7 @@ from bo.samplers.samplers import cKGSampler
 class AcquisitionFunctionType(Enum):
     MC_CONSTRAINED_KNOWLEDGE_GRADIENT = auto()
     ONESHOT_CONSTRAINED_KNOWLEDGE_GRADIENT = auto()
+    DECOUPLED_CONSTRAINED_KNOWLEDGE_GRADIENT = auto()
     BOTORCH_CONSTRAINED_EXPECTED_IMPROVEMENT = auto()
     BOTORCH_EXPECTED_IMPROVEMENT = auto()
     BOTORCH_MC_EXPECTED_IMPROVEMENT = auto()
@@ -62,6 +63,10 @@ def acquisition_function_factory(type, model, objective, best_value):
                                               sampler=sampler,
                                               current_value=best_value,
                                               objective=objective)
+    elif type is AcquisitionFunctionType.DECOUPLED_CONSTRAINED_KNOWLEDGE_GRADIENT:
+        sampler = cKGSampler(sample_shape=torch.Size([5]))
+        return DecoupledConstrainedKnowledgeGradient(model, num_fantasies=5, current_value=best_value,
+                                                      objective=objective, sampler=sampler)
 
 
 class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction):
@@ -96,10 +101,12 @@ class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction):
                     upper_bounds=bounds[1],
                     options={"maxiter": 60}
                 )
+                #print(best_x, best_fval)
 
                 # TODO: Check that I get the candidate with the greatest value
                 # Take the average over the different realisations to save the kgval
-            kgvals[xi] = best_fval
+                print(best_fval.mean())
+            kgvals[xi] = best_fval.detach().mean()
 
         if self.current_value is not None:
             kgvals = kgvals - self.current_value

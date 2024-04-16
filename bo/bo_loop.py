@@ -1,4 +1,7 @@
 from typing import Optional
+import json
+import os
+import time
 
 import torch
 from botorch.acquisition import MCAcquisitionObjective
@@ -36,7 +39,29 @@ class OptimizationLoop:
         self.performance_type = performance_type
         self.acquisition_function_type = ei_type
 
+    def save_parameters(self):
+
+        self.unix_time = round(time.time())
+        print(f'Current time: {self.unix_time}')
+
+        # Create folder for saving data.
+        folder_path = os.getcwd()
+        self.folder = os.path.join(folder_path, str(self.unix_time))
+        os.mkdir(self.folder)
+
+        # TODO: add more parameters
+        parameters = {
+            'seed': self.seed,
+            'budget': self.budget,
+            'p_type': self.performance_type,
+        }
+        with open(f'{self.folder}/parameters.json', 'w') as fp:
+            json.dump(parameters, fp)
+    
     def run(self):
+
+        self.save_parameters()
+
         best_observed_all_sampled = []
 
         train_x, train_y = self.generate_initial_data(n=6)
@@ -68,6 +93,9 @@ class OptimizationLoop:
                     best_observed_location) + " current sample decision x: " + str(new_x),
                 end="",
             )
+            with open(f'{self.folder}/results.dat', 'a') as f:
+                # TODO: Only works for dimension 2 atm.
+                f.write(f'{iteration:>2}, {best_observed_value:>4.5f}, {best_observed_location[0][0]}, {best_observed_location[0][1]}, {new_x[0][0]}, {new_x[0][1]}\n')
 
     def evaluate_black_box_func(self, X):
         return self.black_box_func.evaluate_black_box(X)
