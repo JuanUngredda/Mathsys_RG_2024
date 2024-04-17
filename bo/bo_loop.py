@@ -45,12 +45,14 @@ class OptimizationLoop:
         print(f'Current time: {self.unix_time}')
 
         # Create folder for saving data.
-        folder_path = os.getcwd()
-        self.folder = os.path.join(folder_path, str(self.unix_time))
+        folder_path = os.getcwd() + '/data/'
+        self.folder = os.path.join(folder_path, 'sim-' + str(self.unix_time))
         os.mkdir(self.folder)
 
-        # TODO: add more parameters
         parameters = {
+            'objective': self.objective._get_name(),
+            'black_box': self.black_box_func._get_name(),
+            'acqf': self.acquisition_function_type.name,
             'seed': self.seed,
             'budget': self.budget,
             'p_type': self.performance_type,
