@@ -82,7 +82,7 @@ class OptimizationLoop:
                                                                 objective=self.objective,
                                                                 best_value=best_observed_value)
 
-            new_x = self.compute_next_sample(acquisition_function=acquisition_function)
+            new_x = self.compute_next_sample(acquisition_function=acquisition_function) # Coupled
             new_y = self.evaluate_black_box_func(unnormalize(new_x, bounds=self.bounds))
 
             train_x = torch.cat([train_x, new_x])

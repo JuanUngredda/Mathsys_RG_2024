@@ -85,10 +85,19 @@ class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction, DecoupledAcqu
     def forward(self, X: Tensor) -> Tensor:
         kgvals = torch.zeros(X.shape[0], dtype=torch.double)
         fantasy_model = self.model.fantasize(X=X,sampler = self.sampler)
-        bounds = torch.tensor([[0]*X.shape[-1],[1]*X.shape[-1]])
+        bounds = torch.tensor([[0.0]*X.shape[-1],[1.0]*X.shape[-1]], dtype=torch.double)
         batch_shape = ConstrainedPosteriorMean(fantasy_model).model.batch_shape
         init_conditions = draw_sobol_samples(bounds = bounds,n = 8, q = 1, batch_shape=batch_shape)
-        bestx, bestvals = gen_candidates_torch(initial_conditions=init_conditions, acquisition_function=ConstrainedPosteriorMean(fantasy_model), lower_bounds=bounds[0], upper_bounds=bounds[1], options={"maxiter":20})
+        with torch.enable_grad():
+            bestx, _ = gen_candidates_torch(initial_conditions=init_conditions,
+                                                acquisition_function=ConstrainedPosteriorMean(fantasy_model),
+                                                lower_bounds=bounds[0],
+                                                upper_bounds=bounds[1],
+                                                options={"maxiter":20})
+            bestvals = ConstrainedPosteriorMean(fantasy_model)(bestx)    
+        bestval_sample = bestvals.max(dim=0)[0]
+        kgvals = bestval_sample.mean(dim=0)
+
         return kgvals
 
 class MCConstrainedKnowledgeGradient(MCAcquisitionFunction):
