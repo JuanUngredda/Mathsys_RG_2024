@@ -7,8 +7,9 @@ from botorch.utils.testing import BotorchTestCase, MockModel, MockPosterior
 from gpytorch.mlls import SumMarginalLogLikelihood
 
 
-from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement
+from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement, DecoupledConstrainedKnowledgeGradient
 from bo.constrained_functions.synthetic_problems import testing_function
+from bo.samplers.samplers import quantileSampler
 
 
 class TestMathsysExpectedImprovement(BotorchTestCase):
@@ -18,7 +19,6 @@ class TestMathsysExpectedImprovement(BotorchTestCase):
             variance = torch.ones(1, 1, device=self.device, dtype=dtype)
             mm = MockModel(MockPosterior(mean=mean, variance=variance))
             ei_expected = torch.tensor([0.1978], dtype=dtype)
-            #
             X = torch.empty(1, 1, device=self.device, dtype=dtype)  # dummy
             module = MathsysExpectedImprovement(model=mm, best_f=0.0)
             ei_actual = module(X)
@@ -93,12 +93,17 @@ class TestDecoupledKG(BotorchTestCase):
         train_Y_constraint = func.evaluate_slack_true(train_X_constraint)
         NOISE = torch.tensor(1e-9, device=self.device, dtype=dtype)
         model_objective = SingleTaskGP(train_X_objective, train_Y_objective, train_Yvar=NOISE.expand_as(train_Y_objective.reshape(-1, 1)))
-        model_constraint = SingleTaskGP(train_Y_objective, train_Y_constraint, train_Yvar=NOISE.expand_as(train_Y_constraint.reshape(-1, 1)))
+        model_constraint = SingleTaskGP(train_X_constraint, train_Y_constraint, train_Yvar=NOISE.expand_as(train_Y_constraint.reshape(-1, 1)))
 
         model = ModelListGP(*[model_objective, model_constraint])
         mll = SumMarginalLogLikelihood(model.likelihood, model)
         fit_gpytorch_mll(mll)
 
+        sampler = quantileSampler(sample_shape=torch.Size([5]))
+        ListSampler
+
         for i in range(2):
 
-            acqf = DecoupledAcquisitionFunction(model, sampler, num_fantasies=5)
+            acqf = DecoupledConstrainedKnowledgeGradient(model, sampler = sampler, num_fantasies=5)
+
+        self.assertEqual(expected_decision, 1)

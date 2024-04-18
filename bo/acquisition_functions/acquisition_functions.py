@@ -84,30 +84,11 @@ class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction, DecoupledAcqu
 
     def forward(self, X: Tensor) -> Tensor:
         kgvals = torch.zeros(X.shape[0], dtype=torch.double)
-        for xi, xnew in enumerate(X):
-            fantasy_model = self.model.fantasize(
-                X=xnew,
-                sampler=self.sampler,
-            )
-            bounds = torch.tensor([[0.0] * X.shape[-1], [1.0] * X.shape[-1]])
-            batch_shape = ConstrainedPosteriorMean(fantasy_model).model.batch_shape
-            with torch.enable_grad():
-                num_init_points = 5
-                initial_conditions = draw_sobol_samples(bounds=bounds, n=num_init_points, q=1, batch_shape=batch_shape)
-                best_x, best_fval = gen_candidates_torch(
-                    initial_conditions=initial_conditions.contiguous(),
-                    acquisition_function=ConstrainedPosteriorMean(fantasy_model),
-                    lower_bounds=bounds[0],
-                    upper_bounds=bounds[1],
-                    options={"maxiter": 60}
-                )
-
-                # TODO: Check that I get the candidate with the greatest value
-                # Take the average over the different realisations to save the kgval
-            kgvals[xi] = best_fval
-
-        if self.current_value is not None:
-            kgvals = kgvals - self.current_value
+        fantasy_model = self.model.fantasize(X=X,sampler = self.sampler)
+        bounds = torch.tensor([[0]*X.shape[-1],[1]*X.shape[-1]])
+        batch_shape = ConstrainedPosteriorMean(fantasy_model).model.batch_shape
+        init_conditions = draw_sobol_samples(bounds = bounds,n = 8, q = 1, batch_shape=batch_shape)
+        bestx, bestvals = gen_candidates_torch(initial_conditions=init_conditions, acquisition_function=ConstrainedPosteriorMean(fantasy_model), lower_bounds=bounds[0], upper_bounds=bounds[1], options={"maxiter":20})
         return kgvals
 
 class MCConstrainedKnowledgeGradient(MCAcquisitionFunction):
