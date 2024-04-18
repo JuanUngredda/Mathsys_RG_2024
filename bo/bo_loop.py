@@ -95,9 +95,13 @@ class OptimizationLoop:
                     best_observed_location) + " current sample decision x: " + str(new_x),
                 end="",
             )
-            with open(f'{self.folder}/results.dat', 'a') as f:
+            with open(f'{self.folder}/results.dat', 'a') as results_file:
                 # TODO: Only works for dimension 2 atm.
-                f.write(f'{iteration:>2}, {best_observed_value:>4.5f}, {best_observed_location[0][0]}, {best_observed_location[0][1]}, {new_x[0][0]}, {new_x[0][1]}\n')
+                results_file.write(f'{iteration:>2}, {best_observed_value:>4.5f}, {best_observed_location[0][0]}, {best_observed_location[0][1]}, {new_x[0][0]}, {new_x[0][1]}\n')
+            
+            for i in range(model.num_constraints + 1):
+                with open(f'{self.folder}/gp_{i}.dat', 'a') as model_file:
+                    model_file.write()
 
     def evaluate_black_box_func(self, X):
         return self.black_box_func.evaluate_black_box(X)

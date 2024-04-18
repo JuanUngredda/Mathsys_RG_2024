@@ -1,10 +1,14 @@
 import torch
-from botorch.acquisition import ExpectedImprovement, qExpectedImprovement
-from botorch.models import SingleTaskGP
+from botorch import fit_gpytorch_mll
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, DecoupledAcquisitionFunction
+from botorch.models import SingleTaskGP, ModelListGP
 from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
 from botorch.utils.testing import BotorchTestCase, MockModel, MockPosterior
+from gpytorch.mlls import SumMarginalLogLikelihood
+
 
 from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement
+from bo.constrained_functions.synthetic_problems import testing_function
 
 
 class TestMathsysExpectedImprovement(BotorchTestCase):
@@ -71,3 +75,30 @@ class NumericalTest(BotorchTestCase):
         mc_ei_val = mc_ei(X)
 
         self.assertAllClose(ei_val, mc_ei_val, atol=1e-3)
+
+class TestDecoupledKG(BotorchTestCase):
+    def test_constraints(self):
+
+        dtype = torch.double
+        d = 1
+        num_points_objective = 5
+        num_points_constraint = 50
+        expected_decision = 0 # Objective
+
+        torch.manual_seed(0)
+        train_X_objective = torch.rand(num_points_objective, d, device=self.device, dtype=dtype)
+        train_X_constraint = torch.rand(num_points_constraint, d, device=self.device, dtype=dtype)
+        func = testing_function()
+        train_Y_objective = func.evaluate_true(train_X_objective)
+        train_Y_constraint = func.evaluate_slack_true(train_X_constraint)
+        NOISE = torch.tensor(1e-9, device=self.device, dtype=dtype)
+        model_objective = SingleTaskGP(train_X_objective, train_Y_objective, train_Yvar=NOISE.expand_as(train_Y_objective.reshape(-1, 1)))
+        model_constraint = SingleTaskGP(train_Y_objective, train_Y_constraint, train_Yvar=NOISE.expand_as(train_Y_constraint.reshape(-1, 1)))
+
+        model = ModelListGP(*[model_objective, model_constraint])
+        mll = SumMarginalLogLikelihood(model.likelihood, model)
+        fit_gpytorch_mll(mll)
+
+        for i in range(2):
+
+            acqf = DecoupledAcquisitionFunction(model, sampler, num_fantasies=5)

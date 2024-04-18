@@ -4,7 +4,7 @@ from typing import Optional, Union, Any
 import torch
 from botorch import gen_candidates_torch
 from botorch.acquisition import ExpectedImprovement, \
-    qExpectedImprovement, MCAcquisitionObjective, qKnowledgeGradient, MCAcquisitionFunction
+    qExpectedImprovement, MCAcquisitionObjective, qKnowledgeGradient, MCAcquisitionFunction, DecoupledAcquisitionFunction
 from botorch.acquisition.analytic import _ei_helper, PosteriorMean
 from botorch.acquisition.knowledge_gradient import _split_fantasy_points
 from botorch.acquisition.objective import PosteriorTransform
@@ -69,7 +69,7 @@ def acquisition_function_factory(type, model, objective, best_value):
                                                       objective=objective, sampler=sampler)
 
 
-class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction):
+class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction, DecoupledAcquisitionFunction):
 
     def __init__(self, model: Model,
                  sampler: Optional[MCSampler] = None,
@@ -101,12 +101,10 @@ class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction):
                     upper_bounds=bounds[1],
                     options={"maxiter": 60}
                 )
-                #print(best_x, best_fval)
 
                 # TODO: Check that I get the candidate with the greatest value
                 # Take the average over the different realisations to save the kgval
-                print(best_fval.mean())
-            kgvals[xi] = best_fval.detach().mean()
+            kgvals[xi] = best_fval
 
         if self.current_value is not None:
             kgvals = kgvals - self.current_value
