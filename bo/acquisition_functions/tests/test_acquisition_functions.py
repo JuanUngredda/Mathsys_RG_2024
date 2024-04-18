@@ -2,10 +2,11 @@ import torch
 from botorch import fit_gpytorch_mll
 from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, DecoupledAcquisitionFunction
 from botorch.models import SingleTaskGP, ModelListGP
-from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
+from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler, ListSampler
 from botorch.utils.testing import BotorchTestCase, MockModel, MockPosterior
 from gpytorch.mlls import SumMarginalLogLikelihood
-
+from botorch.acquisition import ConstrainedMCObjective
+from typing import Optional
 
 from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement, DecoupledConstrainedKnowledgeGradient
 from bo.constrained_functions.synthetic_problems import testing_function
@@ -76,7 +77,12 @@ class NumericalTest(BotorchTestCase):
 
         self.assertAllClose(ei_val, mc_ei_val, atol=1e-3)
 
+
+def obj_callable(Z: torch.Tensor, X: Optional[torch.Tensor] = None):
+        return Z[..., 0]
+
 class TestDecoupledKG(BotorchTestCase):
+
     def test_constraints(self):
 
         dtype = torch.double
@@ -100,10 +106,16 @@ class TestDecoupledKG(BotorchTestCase):
         fit_gpytorch_mll(mll)
 
         sampler = quantileSampler(sample_shape=torch.Size([5]))
-        ListSampler
+        sampler_list = ListSampler(*[sampler, sampler])
+
 
         for i in range(2):
 
-            acqf = DecoupledConstrainedKnowledgeGradient(model, sampler = sampler, num_fantasies=5)
+            acqf = DecoupledConstrainedKnowledgeGradient(model, sampler = sampler_list, num_fantasies=5, 
+                                                         objective=ConstrainedMCObjective(objective=obj_callable, constraints=[obj_callable]))
+            acqf(torch.rand(5,1,d, dtype = dtype)) # 5 is no of points, 1 is for q-batch, d is dimension of input space
+
+
 
         self.assertEqual(expected_decision, 1)
+
