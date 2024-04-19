@@ -69,6 +69,8 @@ class OptimizationLoop:
         train_x, train_y = self.generate_initial_data(n=6)
 
         model = self.update_model(train_x, train_y)
+        
+
         for iteration in range(self.budget):
             best_observed_location, best_observed_value = self.best_observed(
                 best_value_computation_type=self.performance_type,
@@ -90,10 +92,12 @@ class OptimizationLoop:
                 new_x, kgvalue = self.compute_next_sample(acquisition_function=acquisition_function) # Coupled
                 kg_values_list[task_idx] = kgvalue
                 new_x_list.append(new_x)
-            new_y = self.evaluate_black_box_func(unnormalize(new_x, bounds=self.bounds))
+            
+            index = torch.argmax(kg_values_list)
+            new_y = self.evaluate_black_box_func(new_x_list[index],index)
 
-            train_x = torch.cat([train_x, new_x])
-            train_y = torch.cat([train_y, new_y])
+            train_x[index] = torch.cat([train_x[index],new_x_list[index]])
+            train_y[index] = torch.cat([train_y[index], new_y])
             model = self.update_model(X=train_x, y=train_y)
 
             print(
@@ -109,6 +113,7 @@ class OptimizationLoop:
             #for i in range(model.num_constraints + 1):
             #    with open(f'{self.folder}/gp_{i}.dat', 'a') as model_file:
             #        model_file.write()
+ 
 
     def evaluate_black_box_func(self, X, task_idx):
         return self.black_box_func.evaluate_task(X, task_idx)
