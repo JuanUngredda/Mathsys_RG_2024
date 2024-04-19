@@ -10,7 +10,8 @@ from gpytorch.mlls import SumMarginalLogLikelihood
 
 from bo.acquisition_functions.acquisition_functions import DecoupledConstrainedKnowledgeGradient
 from bo.constrained_functions.synthetic_problems import ConstrainedBranin
-from bo.model.Model import ConstrainedGPModelWrapper, ConstrainedPosteriorMean
+from bo.model.Model import ConstrainedGPModelWrapper, ConstrainedPosteriorMean, ConstrainedDeoupledGPModelWrapper
+
 
 device = torch.device("cpu")
 dtype = torch.double
@@ -116,4 +117,23 @@ class TestConstrainedGPModelWrapper(TestCase):
 
         kg = DecoupledConstrainedKnowledgeGradient(model=model, num_fantasies=5,
                                                    current_value=torch.Tensor([0.0]))
+        
 
+class TestConstrainedGPDecoupledModelWrapper(TestCase):
+    def test_fit(self):
+        d = 1
+        n_points_objective = 10
+        n_points_constraints = 6
+        torch.manual_seed(0)
+        train_Xf = torch.rand(n_points_objective, d, device=device, dtype=dtype)
+        train_Xc = torch.rand(n_points_constraints, d, device=device, dtype=dtype)
+        problem = ConstrainedBranin()
+        train_f_vals = problem.evaluate_true(train_Xf)
+        train_c_vals = problem.evaluate_slack_true(train_Xc)
+
+        model = ConstrainedDeoupledGPModelWrapper(num_constraints = 1)
+        model.fit([train_Xf, train_Xc], [train_f_vals, train_c_vals])
+        model.optimize()
+        
+
+ 

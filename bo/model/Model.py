@@ -129,20 +129,17 @@ class ConstrainedDeoupledGPModelWrapper():
         self.train_var_noise = torch.tensor(1e-4, device=device, dtype=dtype)
 
     def fit(self, X, Y):
-        assert Y.shape[1] == self.num_constraints + 1, "missmatch constraint number"
-        assert Y.shape[0] == X.shape[0], "missmatch number of evaluations"
 
-
-        self.model_f = SingleTaskGP(train_X=X,
-                                    train_Y=Y[:, 0].reshape(-1, 1),
-                                    train_Yvar=self.train_var_noise.expand_as(Y[:, 0].reshape(-1, 1)),
+        self.model_f = SingleTaskGP(train_X=X[0],
+                                    train_Y=Y[0].reshape(-1, 1),
+                                    train_Yvar=self.train_var_noise.expand_as(Y[0].reshape(-1, 1)),
                                     outcome_transform=Standardize(m=1))
 
         list_of_models = [self.model_f]
         for c in range(1, self.num_constraints + 1):
-            list_of_models.append(SingleTaskGP(train_X=X,
-                                               train_Y=Y[:, c].reshape(-1, 1),
-                                               train_Yvar=self.train_var_noise.expand_as(Y[:, 0].reshape(-1, 1))))
+            list_of_models.append(SingleTaskGP(train_X=X[c],
+                                               train_Y=Y[c].reshape(-1, 1),
+                                               train_Yvar=self.train_var_noise.expand_as(Y[c].reshape(-1, 1))))
 
             self.model = ModelListGP(*list_of_models)
             return self.model
