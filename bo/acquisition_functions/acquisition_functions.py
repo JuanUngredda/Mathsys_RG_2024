@@ -69,7 +69,7 @@ def acquisition_function_factory(type, model, objective, best_value):
                                                       objective=objective, sampler=sampler)
 
 
-class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction, DecoupledAcquisitionFunction):
+class DecoupledConstrainedKnowledgeGradient(DecoupledAcquisitionFunction, MCAcquisitionFunction):
 
     def __init__(self, model: Model,
                  sampler: Optional[MCSampler] = None,
@@ -77,14 +77,17 @@ class DecoupledConstrainedKnowledgeGradient(MCAcquisitionFunction, DecoupledAcqu
                  current_value: Optional[Tensor] = None,
                  objective: Optional[MCAcquisitionObjective] = None,
                  posterior_transform: Optional[PosteriorTransform] = None,
-                 X_pending: Optional[Tensor] = None) -> None:
-        super().__init__(model, sampler, objective, posterior_transform, X_pending)
+                 X_pending: Optional[Tensor] = None,
+                 X_evaluation_mask: Optional[Tensor] = None) -> None:
+        super().__init__(model=model, sampler=sampler, objective=objective,
+                         posterior_transform=posterior_transform, X_pending=X_pending,
+                         X_evaluation_mask=X_evaluation_mask)
         self.current_value = current_value
         self.num_fantasies = num_fantasies
 
     def forward(self, X: Tensor) -> Tensor:
         kgvals = torch.zeros(X.shape[0], dtype=torch.double)
-        fantasy_model = self.model.fantasize(X=X,sampler = self.sampler)
+        fantasy_model = self.model.fantasize(X=X,sampler = self.sampler, evaluation_mask=self.construct_evaluation_mask(X))
         bounds = torch.tensor([[0.0]*X.shape[-1],[1.0]*X.shape[-1]], dtype=torch.double)
         batch_shape = ConstrainedPosteriorMean(fantasy_model).model.batch_shape
         init_conditions = draw_sobol_samples(bounds = bounds,n = 8, q = 1, batch_shape=batch_shape)

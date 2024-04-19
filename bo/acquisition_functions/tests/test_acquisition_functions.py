@@ -88,9 +88,9 @@ class TestDecoupledKG(BotorchTestCase):
 
         dtype = torch.double
         d = 1
-        num_points_objective = 50
-        num_points_constraint = 5
-        expected_decision = 1 # Objective
+        num_points_objective = 5
+        num_points_constraint = 50
+        expected_decision = 0 # Objective
 
         torch.manual_seed(0)
         train_X_objective = torch.rand(num_points_objective, d, device=self.device, dtype=dtype)
@@ -106,19 +106,28 @@ class TestDecoupledKG(BotorchTestCase):
         mll = SumMarginalLogLikelihood(model.likelihood, model)
         fit_gpytorch_mll(mll)
 
+        model.posterior(torch.rand(5, 1, d), dtype=dtype)
+
         sampler = quantileSampler(sample_shape=torch.Size([5]))
         sampler_list = ListSampler(*[sampler, sampler])
 
         kg_values = torch.zeros(2, dtype=dtype)
         for i in range(2):
+            
+            x_eval_mask = torch.zeros(1, 2, dtype=torch.bool) # 2 outputs, 1 == True
+            x_eval_mask[0, i] = 1
 
+            torch.manual_seed(0)
             acqf = DecoupledConstrainedKnowledgeGradient(model, sampler = sampler_list, num_fantasies=5, 
-                                                         objective=ConstrainedMCObjective(objective=obj_callable, constraints=[obj_callable]))
+                                                         objective=ConstrainedMCObjective(objective=obj_callable, constraints=[obj_callable]),
+                                                           X_evaluation_mask=x_eval_mask)
             rd = torch.rand(6, 1, d, dtype = dtype)
             acqf(rd) # 5 is no of points, 1 is for q-batch, d is dimension of input space
         
             bounds = torch.tensor([[0.0]*d,[1.0]*d], dtype=torch.double)
             candidates, candidates_values = optimize_acqf(acqf, bounds, 1, 5, 15, options={'maxiter': 200})
             kg_values[i] = candidates_values
-            print(candidates.shape, candidates_values.shape)
+            print(kg_values)
+            # print(candidates.shape, candidates_values.shape)
+        
         self.assertEqual(expected_decision, torch.argmax(kg_values))
