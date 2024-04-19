@@ -1,17 +1,16 @@
-from typing import Optional
 import json
 import os
 import time
+from typing import Optional
 
 import torch
 from botorch.acquisition import MCAcquisitionObjective
 from botorch.optim import optimize_acqf
 from botorch.test_functions.base import BaseTestProblem
-from botorch.utils.transforms import unnormalize
 from torch import Tensor
 
 from bo.acquisition_functions.acquisition_functions import acquisition_function_factory, AcquisitionFunctionType
-from bo.model.Model import GPModelWrapper, ConstrainedPosteriorMean, ConstrainedDeoupledGPModelWrapper
+from bo.model.Model import ConstrainedPosteriorMean, ConstrainedDeoupledGPModelWrapper
 
 # constants
 device = torch.device("cpu")
@@ -34,10 +33,11 @@ class OptimizationLoop:
         self.black_box_func = black_box_func
         self.dim_x = self.black_box_func.dim
         self.seed = seed
-        self.model = model
+        self.model_wrapper = model
         self.budget = budget
         self.performance_type = performance_type
         self.acquisition_function_type = ei_type
+        self.number_of_outputs = self.model_wrapper.getNumberOfOutputs()
 
     def save_parameters(self):
 
@@ -59,7 +59,7 @@ class OptimizationLoop:
         }
         with open(f'{self.folder}/parameters.json', 'w') as fp:
             json.dump(parameters, fp)
-    
+
     def run(self):
 
         self.save_parameters()
@@ -69,7 +69,6 @@ class OptimizationLoop:
         train_x, train_y = self.generate_initial_data(n=6)
 
         model = self.update_model(train_x, train_y)
-        
 
         for iteration in range(self.budget):
             best_observed_location, best_observed_value = self.best_observed(
@@ -80,23 +79,25 @@ class OptimizationLoop:
                 bounds=self.bounds)
             best_observed_all_sampled.append(best_observed_value)
 
-            kg_values_list = torch.zeros(model.getNumberOfOutputs(),dtype=dtype)
+            kg_values_list = torch.zeros(self.number_of_outputs, dtype=dtype)
             new_x_list = []
 
-            for task_idx in range(model.getNumberOfOutputs()):
+            for task_idx in range(self.number_of_outputs):
                 acquisition_function = acquisition_function_factory(model=model,
-                                                                type=self.acquisition_function_type,
-                                                                objective=self.objective,
-                                                                best_value=best_observed_value, idx=task_idx)
+                                                                    type=self.acquisition_function_type,
+                                                                    objective=self.objective,
+                                                                    best_value=best_observed_value,
+                                                                    idx=task_idx,
+                                                                    number_of_outputs=self.number_of_outputs)
 
-                new_x, kgvalue = self.compute_next_sample(acquisition_function=acquisition_function) # Coupled
+                new_x, kgvalue = self.compute_next_sample(acquisition_function=acquisition_function)  # Coupled
                 kg_values_list[task_idx] = kgvalue
                 new_x_list.append(new_x)
-            
-            index = torch.argmax(kg_values_list)
-            new_y = self.evaluate_black_box_func(new_x_list[index],index)
 
-            train_x[index] = torch.cat([train_x[index],new_x_list[index]])
+            index = torch.argmax(kg_values_list)
+            new_y = self.evaluate_black_box_func(new_x_list[index], index)
+
+            train_x[index] = torch.cat([train_x[index], new_x_list[index]])
             train_y[index] = torch.cat([train_y[index], new_y])
             model = self.update_model(X=train_x, y=train_y)
 
@@ -108,12 +109,12 @@ class OptimizationLoop:
             )
             with open(f'{self.folder}/results.dat', 'a') as results_file:
                 # TODO: Only works for dimension 2 atm.
-                results_file.write(f'{iteration:>2}, {best_observed_value:>4.5f}, {best_observed_location[0][0]}, {best_observed_location[0][1]}, {new_x[0][0]}, {new_x[0][1]}\n')
-            
-            #for i in range(model.num_constraints + 1):
+                results_file.write(
+                    f'{iteration:>2}, {best_observed_value:>4.5f}, {best_observed_location[0][0]}, {best_observed_location[0][1]}, {new_x[0][0]}, {new_x[0][1]}\n')
+
+            # for i in range(model.num_constraints + 1):
             #    with open(f'{self.folder}/gp_{i}.dat', 'a') as model_file:
             #        model_file.write()
- 
 
     def evaluate_black_box_func(self, X, task_idx):
         return self.black_box_func.evaluate_task(X, task_idx)
@@ -122,7 +123,7 @@ class OptimizationLoop:
         # generate training data
         train_x_list = []
         train_y_list = []
-        for i in range(self.model.getNumberOfOutputs()) :
+        for i in range(self.model_wrapper.getNumberOfOutputs()):
             train_x = torch.rand(n, self.dim_x, device=device, dtype=dtype)
             train_x_list += [train_x]
             train_y_list += [self.evaluate_black_box_func(train_x, i)]
@@ -130,8 +131,8 @@ class OptimizationLoop:
         return train_x_list, train_y_list
 
     def update_model(self, X, y):
-        self.model.fit(X, y)
-        optimized_model = self.model.optimize()
+        self.model_wrapper.fit(X, y)
+        optimized_model = self.model_wrapper.optimize()
         return optimized_model
 
     def best_observed(self, best_value_computation_type, train_x, train_y, model, bounds):

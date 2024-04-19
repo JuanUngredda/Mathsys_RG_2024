@@ -4,7 +4,8 @@ from typing import Optional, Union, Any
 import torch
 from botorch import gen_candidates_torch
 from botorch.acquisition import ExpectedImprovement, \
-    qExpectedImprovement, MCAcquisitionObjective, qKnowledgeGradient, MCAcquisitionFunction, DecoupledAcquisitionFunction
+    qExpectedImprovement, MCAcquisitionObjective, qKnowledgeGradient, MCAcquisitionFunction, \
+    DecoupledAcquisitionFunction
 from botorch.acquisition.analytic import _ei_helper, PosteriorMean
 from botorch.acquisition.knowledge_gradient import _split_fantasy_points
 from botorch.acquisition.objective import PosteriorTransform
@@ -41,7 +42,7 @@ def compute_best_posterior_mean(model, bounds, objective):
     return argmax_mean, max_mean
 
 
-def acquisition_function_factory(type, model, objective, best_value, idx):
+def acquisition_function_factory(type, model, objective, best_value, idx, number_of_outputs):
     if type is AcquisitionFunctionType.BOTORCH_EXPECTED_IMPROVEMENT:
         return ExpectedImprovement(model=model, best_f=best_value)
     elif type is AcquisitionFunctionType.BOTORCH_MC_EXPECTED_IMPROVEMENT:
@@ -64,14 +65,13 @@ def acquisition_function_factory(type, model, objective, best_value, idx):
                                               current_value=best_value,
                                               objective=objective)
     elif type is AcquisitionFunctionType.DECOUPLED_CONSTRAINED_KNOWLEDGE_GRADIENT:
-        sampler = quantileSampler(sample_shape=torch.Size([5])) 
-        number_of_outputs=model.getNumberOfOutputs()
-        sampler_list = ListSampler(*[sampler]*number_of_outputs)
-        x_eval_mask = torch.zeros(1, number_of_outputs, dtype=torch.bool) # 2 outputs, 1 == True
+        sampler = quantileSampler(sample_shape=torch.Size([5]))
+        sampler_list = ListSampler(*[sampler] * number_of_outputs)
+        x_eval_mask = torch.zeros(1, number_of_outputs, dtype=torch.bool)  # 2 outputs, 1 == True
         x_eval_mask[0, idx] = 1
-        return DecoupledConstrainedKnowledgeGradient(model, sampler = sampler_list, num_fantasies=5, 
-                                                         objective=objective,
-                                                           X_evaluation_mask=x_eval_mask)
+        return DecoupledConstrainedKnowledgeGradient(model, sampler=sampler_list, num_fantasies=5,
+                                                     objective=objective,
+                                                     X_evaluation_mask=x_eval_mask)
 
 
 class DecoupledConstrainedKnowledgeGradient(DecoupledAcquisitionFunction, MCAcquisitionFunction):
@@ -91,22 +91,23 @@ class DecoupledConstrainedKnowledgeGradient(DecoupledAcquisitionFunction, MCAcqu
         self.num_fantasies = num_fantasies
 
     def forward(self, X: Tensor) -> Tensor:
-        kgvals = torch.zeros(X.shape[0], dtype=torch.double)
-        fantasy_model = self.model.fantasize(X=X,sampler = self.sampler, evaluation_mask=self.construct_evaluation_mask(X))
-        bounds = torch.tensor([[0.0]*X.shape[-1],[1.0]*X.shape[-1]], dtype=torch.double)
+        fantasy_model = self.model.fantasize(X=X, sampler=self.sampler,
+                                             evaluation_mask=self.construct_evaluation_mask(X))
+        bounds = torch.tensor([[0.0] * X.shape[-1], [1.0] * X.shape[-1]], dtype=torch.double)
         batch_shape = ConstrainedPosteriorMean(fantasy_model).model.batch_shape
-        init_conditions = draw_sobol_samples(bounds = bounds,n = 8, q = 1, batch_shape=batch_shape)
+        init_conditions = draw_sobol_samples(bounds=bounds, n=8, q=1, batch_shape=batch_shape)
         with torch.enable_grad():
             bestx, _ = gen_candidates_torch(initial_conditions=init_conditions,
-                                                acquisition_function=ConstrainedPosteriorMean(fantasy_model),
-                                                lower_bounds=bounds[0],
-                                                upper_bounds=bounds[1],
-                                                options={"maxiter":20})
-            bestvals = ConstrainedPosteriorMean(fantasy_model)(bestx)    
+                                            acquisition_function=ConstrainedPosteriorMean(fantasy_model),
+                                            lower_bounds=bounds[0],
+                                            upper_bounds=bounds[1],
+                                            options={"maxiter": 20})
+            bestvals = ConstrainedPosteriorMean(fantasy_model)(bestx)
         bestval_sample = bestvals.max(dim=0)[0]
         kgvals = bestval_sample.mean(dim=0)
 
         return kgvals
+
 
 class MCConstrainedKnowledgeGradient(MCAcquisitionFunction):
     def __init__(self, model: Model, num_fantasies: Optional[int] = 64, sampler: Optional[MCSampler] = None,

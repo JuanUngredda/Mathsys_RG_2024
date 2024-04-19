@@ -133,7 +133,6 @@ class ConstrainedDeoupledGPModelWrapper():
         return self.num_outputs
     
     def fit(self, X, Y):
-
         self.model_f = SingleTaskGP(train_X=X[0],
                                     train_Y=Y[0].reshape(-1, 1),
                                     train_Yvar=self.train_var_noise.expand_as(Y[0].reshape(-1, 1)),
