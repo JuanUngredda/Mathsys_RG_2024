@@ -127,6 +127,7 @@ class ConstrainedDeoupledGPModelWrapper():
         self.model = None
         self.num_constraints = num_constraints
         self.train_var_noise = torch.tensor(1e-4, device=device, dtype=dtype)
+        self.num_outputs = num_constraints + 1
 
     def fit(self, X, Y):
 

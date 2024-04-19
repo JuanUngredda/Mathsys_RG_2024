@@ -99,17 +99,23 @@ class OptimizationLoop:
                 # TODO: Only works for dimension 2 atm.
                 results_file.write(f'{iteration:>2}, {best_observed_value:>4.5f}, {best_observed_location[0][0]}, {best_observed_location[0][1]}, {new_x[0][0]}, {new_x[0][1]}\n')
             
-            for i in range(model.num_constraints + 1):
-                with open(f'{self.folder}/gp_{i}.dat', 'a') as model_file:
-                    model_file.write()
+            #for i in range(model.num_constraints + 1):
+            #    with open(f'{self.folder}/gp_{i}.dat', 'a') as model_file:
+            #        model_file.write()
 
     def evaluate_black_box_func(self, X):
         return self.black_box_func.evaluate_black_box(X)
 
     def generate_initial_data(self, n: int):
         # generate training data
-        train_x = torch.rand(n, self.dim_x, device=device, dtype=dtype)
-        return train_x, self.evaluate_black_box_func(unnormalize(train_x, self.bounds))
+        train_x_list = []
+        train_y_list = []
+        for i in range(self.model.num_outputs) :
+            train_x = torch.rand(n, self.dim_x, device=device, dtype=dtype)
+            train_x_list += [train_x]
+            train_y_list += [self.evaluate_black_box_func(train_x, i)]
+
+        return train_x_list, train_y_list
 
     def update_model(self, X, y):
         self.model.fit(X, y)

@@ -33,6 +33,17 @@ class ConstrainedBranin(ConstrainedBaseTestProblem):
         y = self.evaluate_true(X).reshape(-1, 1)
         c1 = self.evaluate_slack_true(X)
         return torch.concat([y, c1], dim=1)
+    
+    def evaluate_task(self, X: Tensor, task_index: int) -> Tensor:
+        assert task_index <= 1 , "Maximum of 2 Outputs allowed (task_index <= 1)"
+        assert task_index > 0 , "No negative values for task_index allowed"
+        if task_index == 0 : 
+            return self.evaluate_true(X)
+        elif task_index == 1 :
+            return self.evaluate_slack_true(X)
+        else :
+            print("Error evaluate_task")
+            raise
 
 class testing_function(ConstrainedBaseTestProblem):
     _bounds = [(-2.7, 7.5)]
