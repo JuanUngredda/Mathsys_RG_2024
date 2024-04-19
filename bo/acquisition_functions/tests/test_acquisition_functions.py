@@ -1,10 +1,17 @@
 import torch
-from botorch.acquisition import ExpectedImprovement, qExpectedImprovement
-from botorch.models import SingleTaskGP
-from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
+from botorch import fit_gpytorch_mll
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, DecoupledAcquisitionFunction
+from botorch.models import SingleTaskGP, ModelListGP
+from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler, ListSampler
 from botorch.utils.testing import BotorchTestCase, MockModel, MockPosterior
+from gpytorch.mlls import SumMarginalLogLikelihood
+from botorch.acquisition import ConstrainedMCObjective
+from botorch.optim import optimize_acqf
+from typing import Optional
 
-from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement
+from bo.acquisition_functions.acquisition_functions import MathsysExpectedImprovement, DecoupledConstrainedKnowledgeGradient
+from bo.constrained_functions.synthetic_problems import testing_function
+from bo.samplers.samplers import quantileSampler
 
 
 class TestMathsysExpectedImprovement(BotorchTestCase):
@@ -14,7 +21,6 @@ class TestMathsysExpectedImprovement(BotorchTestCase):
             variance = torch.ones(1, 1, device=self.device, dtype=dtype)
             mm = MockModel(MockPosterior(mean=mean, variance=variance))
             ei_expected = torch.tensor([0.1978], dtype=dtype)
-            #
             X = torch.empty(1, 1, device=self.device, dtype=dtype)  # dummy
             module = MathsysExpectedImprovement(model=mm, best_f=0.0)
             ei_actual = module(X)
@@ -71,3 +77,57 @@ class NumericalTest(BotorchTestCase):
         mc_ei_val = mc_ei(X)
 
         self.assertAllClose(ei_val, mc_ei_val, atol=1e-3)
+
+
+def obj_callable(Z: torch.Tensor, X: Optional[torch.Tensor] = None):
+        return Z[..., 0]
+
+class TestDecoupledKG(BotorchTestCase):
+
+    def test_constraints(self):
+
+        dtype = torch.double
+        d = 1
+        num_points_objective = 5
+        num_points_constraint = 50
+        expected_decision = 0 # Objective
+
+        torch.manual_seed(0)
+        train_X_objective = torch.rand(num_points_objective, d, device=self.device, dtype=dtype)
+        train_X_constraint = torch.rand(num_points_constraint, d, device=self.device, dtype=dtype)
+        func = testing_function()
+        train_Y_objective = func.evaluate_true(train_X_objective)
+        train_Y_constraint = func.evaluate_slack_true(train_X_constraint)
+        NOISE = torch.tensor(1e-9, device=self.device, dtype=dtype)
+        model_objective = SingleTaskGP(train_X_objective, train_Y_objective, train_Yvar=NOISE.expand_as(train_Y_objective.reshape(-1, 1)))
+        model_constraint = SingleTaskGP(train_X_constraint, train_Y_constraint, train_Yvar=NOISE.expand_as(train_Y_constraint.reshape(-1, 1)))
+
+        model = ModelListGP(*[model_objective, model_constraint])
+        mll = SumMarginalLogLikelihood(model.likelihood, model)
+        fit_gpytorch_mll(mll)
+
+        model.posterior(torch.rand(5, 1, d), dtype=dtype)
+
+        sampler = quantileSampler(sample_shape=torch.Size([5]))
+        sampler_list = ListSampler(*[sampler, sampler])
+
+        kg_values = torch.zeros(2, dtype=dtype)
+        for i in range(2):
+            
+            x_eval_mask = torch.zeros(1, 2, dtype=torch.bool) # 2 outputs, 1 == True
+            x_eval_mask[0, i] = 1
+
+            torch.manual_seed(0)
+            acqf = DecoupledConstrainedKnowledgeGradient(model, sampler = sampler_list, num_fantasies=5, 
+                                                         objective=ConstrainedMCObjective(objective=obj_callable, constraints=[obj_callable]),
+                                                           X_evaluation_mask=x_eval_mask)
+            rd = torch.rand(6, 1, d, dtype = dtype)
+            acqf(rd) # 5 is no of points, 1 is for q-batch, d is dimension of input space
+        
+            bounds = torch.tensor([[0.0]*d,[1.0]*d], dtype=torch.double)
+            candidates, candidates_values = optimize_acqf(acqf, bounds, 1, 5, 15, options={'maxiter': 200})
+            kg_values[i] = candidates_values
+            print(kg_values)
+            # print(candidates.shape, candidates_values.shape)
+        
+        self.assertEqual(expected_decision, torch.argmax(kg_values))

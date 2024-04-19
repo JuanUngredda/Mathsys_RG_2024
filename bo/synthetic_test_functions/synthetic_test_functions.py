@@ -1,9 +1,9 @@
+import math
+
+import torch
 from botorch.test_functions.base import ConstrainedBaseTestProblem
 from botorch.utils.transforms import unnormalize
 from torch import Tensor
-from typing import Union, List
-import math
-import torch
 
 
 class ConstrainedBranin(ConstrainedBaseTestProblem):
@@ -33,34 +33,14 @@ class ConstrainedBranin(ConstrainedBaseTestProblem):
         y = self.evaluate_true(X).reshape(-1, 1)
         c1 = self.evaluate_slack_true(X)
         return torch.concat([y, c1], dim=1)
-    
+
     def evaluate_task(self, X: Tensor, task_index: int) -> Tensor:
-        assert task_index <= 1 , "Maximum of 2 Outputs allowed (task_index <= 1)"
-        assert task_index >= 0 , "No negative values for task_index allowed"
-        if task_index == 0 : 
+        assert task_index <= 1, "Maximum of 2 Outputs allowed (task_index <= 1)"
+        assert task_index >= 0, "No negative values for task_index allowed"
+        if task_index == 0:
             return self.evaluate_true(X)
-        elif task_index == 1 :
+        elif task_index == 1:
             return self.evaluate_slack_true(X)
-        else :
+        else:
             print("Error evaluate_task")
             raise
-
-class testing_function(ConstrainedBaseTestProblem):
-    _bounds = [(-2.7, 7.5)]
-
-    def __init__(self, noise_std: Union[None, float, List[float]] = None, negate: bool = False) -> None:
-        self.dim = 1
-        super().__init__(noise_std, negate)
-        self._bounds = torch.tensor(self._bounds, dtype=torch.float).transpose(-1, -2)
-
-    def evaluate_slack_true(self, X: Tensor) -> Tensor:
-        X_tf = unnormalize(X, self._bounds)
-        return torch.sin(X_tf)
-
-    def evaluate_true(self, X: Tensor) -> Tensor:
-        X_tf = unnormalize(X, self._bounds)
-        return self.expensive_function(X_tf)
-
-    def expensive_function(self, x):
-        x = x - 0.55
-        return torch.sin(x) + torch.sin((2.0) * x)
