@@ -11,7 +11,7 @@ from botorch.utils.transforms import unnormalize
 from torch import Tensor
 
 from bo.acquisition_functions.acquisition_functions import acquisition_function_factory, AcquisitionFunctionType
-from bo.model.Model import GPModelWrapper, ConstrainedPosteriorMean
+from bo.model.Model import GPModelWrapper, ConstrainedPosteriorMean, ConstrainedDeoupledGPModelWrapper
 
 # constants
 device = torch.device("cpu")
@@ -21,7 +21,7 @@ dtype = torch.float64
 class OptimizationLoop:
 
     def __init__(self, black_box_func: BaseTestProblem,
-                 model: GPModelWrapper,
+                 model: ConstrainedDeoupledGPModelWrapper,
                  objective: Optional[MCAcquisitionObjective],
                  ei_type: AcquisitionFunctionType,
                  seed: int,
@@ -77,12 +77,19 @@ class OptimizationLoop:
                 model=model,
                 bounds=self.bounds)
             best_observed_all_sampled.append(best_observed_value)
-            acquisition_function = acquisition_function_factory(model=model,
+
+            kg_values_list = torch.zeros(model.getNumberOfOutputs(),dtype=dtype)
+            new_x_list = []
+
+            for task_idx in range(model.getNumberOfOutputs()):
+                acquisition_function = acquisition_function_factory(model=model,
                                                                 type=self.acquisition_function_type,
                                                                 objective=self.objective,
-                                                                best_value=best_observed_value)
+                                                                best_value=best_observed_value, idx=task_idx)
 
-            new_x = self.compute_next_sample(acquisition_function=acquisition_function) # Coupled
+                new_x, kgvalue = self.compute_next_sample(acquisition_function=acquisition_function) # Coupled
+                kg_values_list[task_idx] = kgvalue
+                new_x_list.append(new_x)
             new_y = self.evaluate_black_box_func(unnormalize(new_x, bounds=self.bounds))
 
             train_x = torch.cat([train_x, new_x])
@@ -103,14 +110,14 @@ class OptimizationLoop:
             #    with open(f'{self.folder}/gp_{i}.dat', 'a') as model_file:
             #        model_file.write()
 
-    def evaluate_black_box_func(self, X):
-        return self.black_box_func.evaluate_black_box(X)
+    def evaluate_black_box_func(self, X, task_idx):
+        return self.black_box_func.evaluate_task(X, task_idx)
 
     def generate_initial_data(self, n: int):
         # generate training data
         train_x_list = []
         train_y_list = []
-        for i in range(self.model.num_outputs) :
+        for i in range(self.model.getNumberOfOutputs()) :
             train_x = torch.rand(n, self.dim_x, device=device, dtype=dtype)
             train_x_list += [train_x]
             train_y_list += [self.evaluate_black_box_func(train_x, i)]
@@ -142,7 +149,7 @@ class OptimizationLoop:
         return argmax_mean, max_mean
 
     def compute_next_sample(self, acquisition_function):
-        candidates, _ = optimize_acqf(
+        candidates, kgvalue = optimize_acqf(
             acq_function=acquisition_function,
             bounds=self.bounds,
             q=1,
@@ -152,4 +159,4 @@ class OptimizationLoop:
         )
         # observe new values
         new_x = candidates.detach()
-        return new_x
+        return new_x, kgvalue

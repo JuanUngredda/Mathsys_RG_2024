@@ -36,7 +36,7 @@ class ConstrainedBranin(ConstrainedBaseTestProblem):
     
     def evaluate_task(self, X: Tensor, task_index: int) -> Tensor:
         assert task_index <= 1 , "Maximum of 2 Outputs allowed (task_index <= 1)"
-        assert task_index > 0 , "No negative values for task_index allowed"
+        assert task_index >= 0 , "No negative values for task_index allowed"
         if task_index == 0 : 
             return self.evaluate_true(X)
         elif task_index == 1 :

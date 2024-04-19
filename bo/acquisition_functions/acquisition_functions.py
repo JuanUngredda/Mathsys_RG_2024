@@ -10,13 +10,13 @@ from botorch.acquisition.knowledge_gradient import _split_fantasy_points
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.model import Model
 from botorch.optim import optimize_acqf
-from botorch.sampling import MCSampler, SobolQMCNormalSampler
+from botorch.sampling import MCSampler, SobolQMCNormalSampler, ListSampler
 from botorch.utils import draw_sobol_samples
 from botorch.utils.transforms import match_batch_shape, t_batch_mode_transform
 from torch import Tensor
 
 from bo.model.Model import ConstrainedPosteriorMean
-from bo.samplers.samplers import cKGSampler
+from bo.samplers.samplers import cKGSampler, quantileSampler
 
 
 class AcquisitionFunctionType(Enum):
@@ -41,7 +41,7 @@ def compute_best_posterior_mean(model, bounds, objective):
     return argmax_mean, max_mean
 
 
-def acquisition_function_factory(type, model, objective, best_value):
+def acquisition_function_factory(type, model, objective, best_value, idx):
     if type is AcquisitionFunctionType.BOTORCH_EXPECTED_IMPROVEMENT:
         return ExpectedImprovement(model=model, best_f=best_value)
     elif type is AcquisitionFunctionType.BOTORCH_MC_EXPECTED_IMPROVEMENT:
@@ -64,9 +64,14 @@ def acquisition_function_factory(type, model, objective, best_value):
                                               current_value=best_value,
                                               objective=objective)
     elif type is AcquisitionFunctionType.DECOUPLED_CONSTRAINED_KNOWLEDGE_GRADIENT:
-        sampler = cKGSampler(sample_shape=torch.Size([5]))
-        return DecoupledConstrainedKnowledgeGradient(model, num_fantasies=5, current_value=best_value,
-                                                      objective=objective, sampler=sampler)
+        sampler = quantileSampler(sample_shape=torch.Size([5])) 
+        number_of_outputs=model.getNumberOfOutputs()
+        sampler_list = ListSampler(*[sampler]*number_of_outputs)
+        x_eval_mask = torch.zeros(1, number_of_outputs, dtype=torch.bool) # 2 outputs, 1 == True
+        x_eval_mask[0, idx] = 1
+        return DecoupledConstrainedKnowledgeGradient(model, sampler = sampler_list, num_fantasies=5, 
+                                                         objective=objective,
+                                                           X_evaluation_mask=x_eval_mask)
 
 
 class DecoupledConstrainedKnowledgeGradient(DecoupledAcquisitionFunction, MCAcquisitionFunction):

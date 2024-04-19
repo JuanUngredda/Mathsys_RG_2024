@@ -6,7 +6,7 @@ from botorch.acquisition import ConstrainedMCObjective
 from bo.acquisition_functions.acquisition_functions import AcquisitionFunctionType
 from bo.bo_loop import OptimizationLoop
 from bo.constrained_functions.synthetic_problems import ConstrainedBranin
-from bo.model.Model import ConstrainedGPModelWrapper
+from bo.model.Model import ConstrainedGPModelWrapper, ConstrainedDeoupledGPModelWrapper
 
 device = torch.device("cpu")
 dtype = torch.double
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # Transform accordingly in the problem.
     black_box_function = ConstrainedBranin(noise_std=1e-6, negate=True)
     num_constraints = 1
-    model = ConstrainedGPModelWrapper(num_constraints=num_constraints)
+    model = ConstrainedDeoupledGPModelWrapper(num_constraints=num_constraints)
     # define a feasibility-weighted objective for optimization
     constrained_obj = ConstrainedMCObjective(
         objective=obj_callable,
