@@ -5,8 +5,8 @@ from botorch.acquisition import ConstrainedMCObjective
 
 from bo.acquisition_functions.acquisition_functions import AcquisitionFunctionType
 from bo.bo_loop import OptimizationLoop
-from bo.constrained_functions.synthetic_problems import ConstrainedBranin
 from bo.model.Model import ConstrainedGPModelWrapper, ConstrainedDeoupledGPModelWrapper
+from bo.synthetic_test_functions.synthetic_test_functions import ConstrainedBranin
 
 device = torch.device("cpu")
 dtype = torch.double
@@ -26,6 +26,10 @@ def constraint_callable_wrapper(constraint_idx):
 if __name__ == "__main__":
     # Note: the launcher assumes that all inequalities are less than and the limit of the constraint is zero.
     # Transform accordingly in the problem.
+    # TODO: save the information bayesian optimization information.
+    # TODO: change the penalty M in the acquisition function.
+    # TODO: select and code up the test functions to use for the poster/report.
+    #
     black_box_function = ConstrainedBranin(noise_std=1e-6, negate=True)
     num_constraints = 1
     model = ConstrainedDeoupledGPModelWrapper(num_constraints=num_constraints)
@@ -39,7 +43,7 @@ if __name__ == "__main__":
                             ei_type=AcquisitionFunctionType.DECOUPLED_CONSTRAINED_KNOWLEDGE_GRADIENT,
                             bounds=torch.tensor([[0.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype),
                             performance_type="model",
-                            model = model,
+                            model=model,
                             seed=0,
                             budget=5)
     loop.run()
